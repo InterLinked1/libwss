@@ -1,0 +1,2 @@
+# libwss
+WebSocket server library
