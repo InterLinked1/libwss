@@ -20,6 +20,8 @@ A common paradigm in WebSocket libraries is to provide a set of callbacks, such 
 
 All public functions are documented in `wss.h`.
 
+For an example of building a WebSocket server using `libwss`, you can refer to the `ws_handler` function in the [net_ws](https://github.com/InterLinked1/lbbs/blob/master/nets/net_ws.c) LBBS module, for which this library was originally written. (Do keep in mind though that while this library is licensed under the MPL, `net_ws` is licensed under GPLv2.)
+
 ## Building
 
 This library is quite simple and has *no* external dependencies. To build, simply run:
