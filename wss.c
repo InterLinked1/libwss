@@ -418,12 +418,17 @@ unsigned long wss_frame_payload_length(struct wss_frame *frame)
 static int full_write(int fd, const char *buf, unsigned int len)
 {
 	while (len > 0) {
-		ssize_t res = write(fd, buf, len);
+		ssize_t res;
+		res = write(fd, buf, len);
 		if (res > 0) {
+			buf += res;
 			len -= res;
+		} else {
+			wss_log(WS_LOG_WARNING, "write returned %lu: %s\n", res, strerror(errno));
+			return -1;
 		}
 	}
-	return len;
+	return 0;
 }
 
 static int wss_frame_write(struct wss_client *client, int opcode, const char *payload, size_t len, int fin)
@@ -431,6 +436,7 @@ static int wss_frame_write(struct wss_client *client, int opcode, const char *pa
 	char preamble[10]; /* At least 2, maximum of 10 */
 	unsigned char payload_len;
 	int preamble_bytes = 2;
+	int res = 0;
 
 	if (!WS_OPCODE_VALID(opcode)) {
 		wss_log(WS_LOG_ERROR, "Invalid frame opcode: %d\n", opcode);
@@ -456,15 +462,16 @@ static int wss_frame_write(struct wss_client *client, int opcode, const char *pa
 		preamble_bytes += 2;
 	} else if (payload_len == 127) {
 		unsigned int *xlen = (unsigned int *) (preamble + 2);
+		*xlen++ = 0; /* Highest order bit is 0 */
 		*xlen = htonl(len);
 		preamble_bytes += 8;
 	}
-	wss_debug(2, "Sending WebSocket %s frame (length %lu, incl. %d header)\n", opcode_name(opcode), len, preamble_bytes);
-	full_write(client->wfd, preamble, preamble_bytes);
-	if (payload) {
-		full_write(client->wfd, payload, len);
+	wss_debug(2, "Sending WebSocket %s frame (length %lu, excl. %d header)\n", opcode_name(opcode), len, preamble_bytes);
+	res |= full_write(client->wfd, preamble, preamble_bytes);
+	if (!res && payload) {
+		res |= full_write(client->wfd, payload, len);
 	}
-	return 0;
+	return res;
 }
 
 int wss_write(struct wss_client *client, int opcode, const char *payload, size_t len)
