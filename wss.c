@@ -29,6 +29,17 @@
 #include <math.h>
 #include <assert.h>
 
+#if defined(__linux__)
+#include <endian.h>
+#elif defined(__FreeBSD__) || defined(__NetBSD__)
+#include <sys/endian.h>
+#elif defined(__OpenBSD__)
+#include <sys/types.h>
+#define be16toh(x) betoh16(x)
+#define be32toh(x) betoh32(x)
+#define be64toh(x) betoh64(x)
+#endif
+
 #include "wss.h"
 
 /* Leftmost (MSB) to rightmost (LSB) */
@@ -264,13 +275,22 @@ static int frame_internal_read(struct wss_client *client, struct wss_frame *fram
 			WS_NEED_BYTES(2);
 			frame->length = ntohs(*((unsigned int *) (frame->buf)));
 			WS_PARSE_NEXT(2, WS_PARSE_MASK, 4);
+			if (frame->length <= 125) {
+				wss_log(WS_LOG_ERROR, "Frame length %lu is too small\n", frame->length);
+				return -1;
+			}
 			break;
 		case WS_PARSE_XLENGTH2: /* Extended payload length continued, if length == 127 */
 			/* Same as XLENGTH, but 8 bytes */
 			WS_NEED_BYTES(8);
-			frame->length = ntohl(*((unsigned int *) (frame->buf)));
+			/* Can't use ntohl, since that only reads 32 bits, not 64
+			 * See: https://stackoverflow.com/questions/809902/64-bit-ntohl-in-c/4410728#4410728 */
+			frame->length = be64toh(*((uint64_t *) (frame->buf)));
 			if (frame->length > pow(2, 63) - 1) {
 				wss_log(WS_LOG_ERROR, "Frame length %lu is too large\n", frame->length); /* Highest order bit must be 0 */
+				return -1;
+			} else if (frame->length <= 65535) {
+				wss_log(WS_LOG_ERROR, "Frame length %lu is too small\n", frame->length);
 				return -1;
 			}
 			WS_PARSE_NEXT(8, WS_PARSE_MASK, 4);
