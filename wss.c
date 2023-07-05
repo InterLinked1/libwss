@@ -444,7 +444,7 @@ static int full_write(int fd, const char *buf, unsigned int len)
 			buf += res;
 			len -= res;
 		} else {
-			wss_log(WS_LOG_WARNING, "write returned %lu: %s\n", res, strerror(errno));
+			wss_log(WS_LOG_WARNING, "write returned %d: %s\n", (int) res, strerror(errno));
 			return -1;
 		}
 	}
