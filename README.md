@@ -6,7 +6,7 @@ This is `libwss`, yet another WebSocket library (Y.A.W.L.). I wrote it because, 
 
 A few things to keep in mind:
 
-This is a simple and relatively low-level *WebSocket server library*, **not** a *WebSocket server*. The library can be used to build a WebSocket server, but it is not itself a server. This contrasts with many other libraries that themselves can operate a server for you. This library does not do that, since it's intended for use in custom WebSocket server applications. The library implements the WebSocket protocol, and doesn't do anything else.
+This is a simple and relatively low-level *WebSocket server (and client) library*, **not** a *WebSocket server*. The library can be used to build a WebSocket server, but it is not itself a server. This contrasts with many other libraries that themselves can operate a server for you. This library does not do that, since it's intended for use in custom WebSocket server applications. The library implements the WebSocket protocol, and doesn't do anything else.
 
 Because this is not a server, it does not parse HTTP requests or handle the HTTP to WebSocket upgrade for you. It is expected you do this, if needed, in your WebSocket server application *before* calling `wss_client_new`. Likewise, listening on a socket, accepting clients, and closing sockets is your responsibility.
 
@@ -22,6 +22,8 @@ All public functions are documented in `wss.h`.
 
 For an example of building a WebSocket server using `libwss`, you can refer to the `ws_handler` function in the [net_ws](https://github.com/InterLinked1/lbbs/blob/master/nets/net_ws.c) LBBS module, for which this library was originally written. (Do keep in mind though that while this library is licensed under the MPL, `net_ws` is licensed under GPLv2.)
 
+You can also refer to `test.c` which shows how a WebSocket client and server can be used.
+
 ## Building
 
 This library is quite simple and has *no* external dependencies. To build, simply run:
@@ -33,3 +35,16 @@ To install the shared library, `libwss.so`, run:
 `make install`
 
 You can then link with the library in your project with `-lwss`, as you would expect.
+
+To build the tests, run `make tests`, and then run `./test` in the source directory.
+
+## FAQ
+
+### Does this library support TLS?
+
+TLS is beyond the scope of this library. To use TLS, you can configure I/O callbacks for read and write operations,
+and then your application can do TLS operations (e.g. `SSL_read` and `SSL_write`, if you are using OpenSSL).
+Because your application provides the TLS implementation, you can use any TLS library of your choice.
+
+If no I/O callbacks are configured, the library will try to read and write directly from the file descriptors
+provided when a client was created.

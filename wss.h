@@ -55,6 +55,11 @@ struct wss_frame;
 #define WS_CLOSE_UNEXPECTED			1011
 #define WS_CLOSE_RESERVED_TLS		1015 /* Do not send */
 
+enum websocket_type {
+	WS_SERVER = 0,
+	WS_CLIENT,
+};
+
 /*! \brief Get the name of a WebSocket frame's opcode */
 const char *wss_frame_name(struct wss_frame *frame);
 
@@ -79,6 +84,26 @@ void wss_client_destroy(struct wss_client *client);
  * \return client on success, which should be cleaned up using client
  */
 struct wss_client *wss_client_new(void *data, int rfd, int wfd);
+
+/*!
+ * \brief Set the type of a WebSocket connection
+ * \param client
+ * \param type Connection type (WS_SERVER if the connection is being handled by a server or WS_CLIENT if being used by a client).
+ *             Default if not specified is server.
+ */
+void wss_set_client_type(struct wss_client *client, enum websocket_type type);
+
+/*!
+ * \brief Set custom I/O callbacks for reading and writing to/from a client
+ * \param client
+ * \param read_cb A callback for reading data from the client.
+ *                Interface is the same as read, except the custom user data is provided instead of a file descriptor.
+ *                Set to NULL to use read directly with the rfd provided to wss_client_new.
+ * \param write_cb A callback for writing data to the client.
+ *                 Interface is the same as write, except the custom user data is provided instead of a file descriptor.
+ *                 Set to NULL to use write directly with the wfd provided to wss_client_new.
+ */
+void wss_set_io_callbacks(struct wss_client *client, ssize_t (*read_cb)(void *data, char *buf, size_t len), ssize_t (*write_cb)(void *data, const char *buf, size_t len));
 
 /*!
  * \brief Read a WebSocket frame from the client

@@ -12,7 +12,7 @@ RM		= rm -f
 INSTALL = install
 INSTALL = install
 
-MAIN_SRC := $(wildcard *.c)
+MAIN_SRC := wss.c
 MAIN_OBJ = $(MAIN_SRC:.c=.o)
 
 all: $(MAIN_OBJ)
@@ -22,6 +22,9 @@ all: $(MAIN_OBJ)
 install: all
 	$(INSTALL) -m  755 $(LIBNAME).so "/usr/lib/"
 	$(INSTALL) -m 755 $(EXE).h "/usr/include"
+
+tests: test.o
+	$(CC) $(CFLAGS) -o test *.o -lwss
 
 uninstall:
 	$(RM) /usr/lib/$(LIBNAME).so

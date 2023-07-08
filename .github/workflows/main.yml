@@ -21,8 +21,11 @@ jobs:
      - name: Checkout
        uses: actions/checkout@v2
      # Runs a set of commands using the runners shell
-     - name: Start build
+     - name: Integration tests
        run: |
           echo Beginning build
           pwd
           make
+          sudo make install
+          make tests
+          ./test

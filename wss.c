@@ -27,6 +27,7 @@
 #include <poll.h>
 #include <arpa/inet.h>
 #include <math.h>
+#include <time.h>
 #include <assert.h>
 
 #if defined(__linux__)
@@ -97,7 +98,37 @@ struct wss_client {
 	void *data;
 	struct wss_frame frame;
 	unsigned short int closecode;	/*!< Close code on errors */
+	enum websocket_type type:1; /*!< Server or client? */
+	ssize_t (*read_cb)(void *data, char *buf, size_t len);
+	ssize_t (*write_cb)(void *data, const char *buf, size_t len);
 };
+
+static ssize_t __read_cb(struct wss_client *client, char *buf, size_t len)
+{
+	if (client->read_cb) {
+		return client->read_cb(client->data, buf, len);
+	}
+	return read(client->rfd, buf, len);
+}
+
+static ssize_t __write_cb(struct wss_client *client, const char *buf, size_t len)
+{
+	if (client->write_cb) {
+		return client->write_cb(client->data, buf, len);
+	}
+	return write(client->wfd, buf, len);
+}
+
+void wss_set_client_type(struct wss_client *client, enum websocket_type type)
+{
+	client->type = type;
+}
+
+void wss_set_io_callbacks(struct wss_client *client, ssize_t (*read_cb)(void *data, char *buf, size_t len), ssize_t (*write_cb)(void *data, const char *buf, size_t len))
+{
+	client->read_cb = read_cb;
+	client->write_cb = write_cb;
+}
 
 static const char *opcode_name(int opcode)
 {
@@ -223,7 +254,7 @@ static int frame_internal_read(struct wss_client *client, struct wss_frame *fram
 
 	/* Assume that some amount of data is available and read will at least return immediately. */
 	assert(frame->maxread <= sizeof(frame->buf) - frame->datapos); /* or buffer overflow */
-	res = read(client->rfd, frame->buf + frame->datapos, frame->maxread);
+	res = __read_cb(client, frame->buf + frame->datapos, frame->maxread);
 	if (res <= 0) {
 		wss_debug(1, "WebSocket client read returned %d: %s\n", res, strerror(errno));
 		return -1;
@@ -253,10 +284,18 @@ static int frame_internal_read(struct wss_client *client, struct wss_frame *fram
 			/* Fallthrough */
 		case WS_PARSE_LENGTH:
 			frame->masked = (frame->buf[pos] & BIT0) == BIT0;
-			if (!frame->masked) {
-				wss_log(WS_LOG_ERROR, "Client data is not masked, aborting\n");
-				client->closecode = WS_CLOSE_PROTOCOL_ERROR;
-				return -1;
+			if (client->type == WS_SERVER) {
+				if (!frame->masked) {
+					wss_log(WS_LOG_ERROR, "Client data is not masked, aborting\n");
+					client->closecode = WS_CLOSE_PROTOCOL_ERROR;
+					return -1;
+				}
+			} else {
+				if (frame->masked) {
+					wss_log(WS_LOG_ERROR, "Server data is masked, aborting\n");
+					client->closecode = WS_CLOSE_PROTOCOL_ERROR;
+					return -1;
+				}
 			}
 			frame->length = frame->buf[pos] & 0x7f;
 			if (frame->length == 127) {
@@ -267,14 +306,22 @@ static int frame_internal_read(struct wss_client *client, struct wss_frame *fram
 				WS_PARSE_NEXT(1, WS_PARSE_XLENGTH, 2);
 			} else {
 				/* We're done, that is the length */
-				WS_PARSE_NEXT(1, WS_PARSE_MASK, 1);
+				if (frame->masked) {
+					WS_PARSE_NEXT(1, WS_PARSE_MASK, 1);
+				} else {
+					WS_PARSE_NEXT(1, WS_PARSE_PAYLOAD, frame->length);
+				}
 			}
 			/* Fallthrough */
 		case WS_PARSE_XLENGTH: /* Extended payload length */
 			/* 2 bytes contain the length */
 			WS_NEED_BYTES(2);
 			frame->length = ntohs(*((unsigned int *) (frame->buf)));
-			WS_PARSE_NEXT(2, WS_PARSE_MASK, 4);
+			if (frame->masked) {
+				WS_PARSE_NEXT(2, WS_PARSE_MASK, 4);
+			} else {
+				WS_PARSE_NEXT(2, WS_PARSE_PAYLOAD, frame->length);
+			}
 			if (frame->length <= 125) {
 				wss_log(WS_LOG_ERROR, "Frame length %lu is too small\n", frame->length);
 				return -1;
@@ -293,7 +340,11 @@ static int frame_internal_read(struct wss_client *client, struct wss_frame *fram
 				wss_log(WS_LOG_ERROR, "Frame length %lu is too small\n", frame->length);
 				return -1;
 			}
-			WS_PARSE_NEXT(8, WS_PARSE_MASK, 4);
+			if (frame->masked) {
+				WS_PARSE_NEXT(4, WS_PARSE_MASK, 4);
+			} else {
+				WS_PARSE_NEXT(4, WS_PARSE_PAYLOAD, frame->length);
+			}
 			break;
 		case WS_PARSE_MASK:
 			/* If we got here, the next 4 bytes MUST be the masking key. We'd have bailed out already otherwise. */
@@ -334,18 +385,19 @@ static int read_payload(struct wss_client *client, struct wss_frame *frame)
 	}
 	while (length > 0) {
 		unsigned long i = already;
-		/* XXX poll before? */
-		int res = read(client->rfd, frame->data + already, length);
+		int res = __read_cb(client, frame->data + already, length);
 		if (res <= 0) {
 			wss_debug(1, "WebSocket client read returned %d: %s\n", res, strerror(errno));
 			client->closecode = WS_CLOSE_PROTOCOL_ERROR;
 			return -1;
 		}
-		/* Unmask the data received */
 		already += res;
 		length -= res;
-		for (; i < already; i++) {
-			frame->data[i] = frame->data[i] ^ frame->key[i % 4];
+		/* Unmask the data received */
+		if (client->frame.masked) {
+			for (; i < already; i++) {
+				frame->data[i] = frame->data[i] ^ frame->key[i % 4];
+			}
 		}
 	}
 	return 0;
@@ -371,7 +423,7 @@ int wss_read(struct wss_client *client, int pollms, int ready)
 		if (ready) {
 			/* If calling application knows data is available on this fd, skip the first poll */
 			ready = 0;
-		} else {
+		} else if (!client->read_cb) { /* If there's a read callback, further data might be buffered (e.g. TLS) */
 			res = poll(&pfd, 1, frame->state == WS_PARSE_INITIAL ? pollms : 1000);
 			if (res <= 0) {
 				wss_debug(1, "WebSocket client poll returned %d (%s)\n", res, strerror(errno));
@@ -435,11 +487,11 @@ unsigned long wss_frame_payload_length(struct wss_frame *frame)
 	return frame->length;
 }
 
-static int full_write(int fd, const char *buf, unsigned int len)
+static int __full_write(struct wss_client *client, const char *buf, unsigned int len)
 {
 	while (len > 0) {
 		ssize_t res;
-		res = write(fd, buf, len);
+		res = __write_cb(client, buf, len);
 		if (res > 0) {
 			buf += res;
 			len -= res;
@@ -451,9 +503,40 @@ static int full_write(int fd, const char *buf, unsigned int len)
 	return 0;
 }
 
+static int full_write(struct wss_client *client, const char *buf, unsigned int len, const char mask[4])
+{
+	if (client->type == WS_SERVER || !mask) {
+		return __full_write(client, buf, len);
+	} else {
+		/* We need to mask the data we send to the server.
+		 * Can we do it without additional allocations? You bet! */
+		char masked[8192]; /* This MUST be a multiple of 4, so that i % 4 is correct each round */
+		const char *pos = buf;
+		unsigned int left = len;
+		/* Copy and send it in chunks */
+		while (left > 0) {
+			int res;
+			unsigned int i, sendbytes = left > sizeof(masked) ? sizeof(masked) : left;
+			/* Mask the data */
+			for (i = 0; i < sendbytes; i++) {
+				masked[i] = pos[i] ^ mask[i % 4];
+			}
+			/* Send it */
+			res = __full_write(client, masked, sendbytes);
+			if (res < 0) {
+				return res;
+			}
+			pos += sendbytes;
+			left -= sendbytes;
+		}
+	}
+	return 0;
+}
+
 static int wss_frame_write(struct wss_client *client, int opcode, const char *payload, size_t len, int fin)
 {
-	char preamble[10]; /* At least 2, maximum of 10 */
+	char preamble[14]; /* At least 2, maximum of 10, +4 for mask if present */
+	const char *mask = NULL;
 	unsigned char payload_len;
 	int preamble_bytes = 2;
 	int res = 0;
@@ -471,10 +554,13 @@ static int wss_frame_write(struct wss_client *client, int opcode, const char *pa
 	}
 	/* Set the 4-byte opcode (higher order bits of opcode will be 0s) */
 	preamble[0] |= opcode & 0xff;
-	/* No mask in client's direction */
+	/* No mask in client's direction, only server's */
+	if (client->type == WS_CLIENT) {
+		preamble[1] |= BIT0;
+	}
 	/* Payload length */
 	payload_len = len > 0xffff ? 127 : len > 125 ? 126 : len;
-	preamble[1] = payload_len & 0x7f;
+	preamble[1] |= payload_len & 0x7f;
 	/* Extended payload */
 	if (payload_len == 126) {
 		unsigned short int *xlen = (unsigned short int *) (preamble + 2);
@@ -486,10 +572,19 @@ static int wss_frame_write(struct wss_client *client, int opcode, const char *pa
 		*xlen = htonl(len);
 		preamble_bytes += 8;
 	}
-	wss_debug(2, "Sending WebSocket %s frame (length %lu, excl. %d header)\n", opcode_name(opcode), len, preamble_bytes);
-	res |= full_write(client->wfd, preamble, preamble_bytes);
+	if (!res && client->type == WS_CLIENT) {
+		/* Need a 4-byte mask */
+		srand(time(NULL));
+		mask = preamble + preamble_bytes;
+		preamble[preamble_bytes++] = rand() % 127;
+		preamble[preamble_bytes++] = rand() % 127;
+		preamble[preamble_bytes++] = rand() % 127;
+		preamble[preamble_bytes++] = rand() % 127;
+	}
+	wss_debug(2, "Sending WebSocket %s frame (length %lu, excl. %d-byte header)\n", opcode_name(opcode), len, preamble_bytes);
+	res |= full_write(client, preamble, preamble_bytes, NULL);
 	if (!res && payload) {
-		res |= full_write(client->wfd, payload, len);
+		res |= full_write(client, payload, len, mask);
 	}
 	return res;
 }
