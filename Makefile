@@ -10,14 +10,14 @@ EXE		= wss
 LIBNAME = libwss
 RM		= rm -f
 INSTALL = install
-INSTALL = install
 
 MAIN_SRC := wss.c
 MAIN_OBJ = $(MAIN_SRC:.c=.o)
 
+# Use $(MAIN_OBJ) instead of $^ for portability to BSD make
 all: $(MAIN_OBJ)
-	@echo "== Linking $@"
-	$(CC) -shared -fPIC -o $(LIBNAME).so $^
+	@echo "== Linking $(MAIN_OBJ)"
+	$(CC) -shared -fPIC -o $(LIBNAME).so $(MAIN_OBJ)
 
 install: all
 	$(INSTALL) -m  755 $(LIBNAME).so "/usr/lib/"
@@ -30,8 +30,12 @@ uninstall:
 	$(RM) /usr/lib/$(LIBNAME).so
 	$(RM) /usr/include/$(EXE).h
 
-%.o : %.c
-	$(CC) $(CFLAGS) -c $^
+# Use SUFFIXES instead of pattern rules, which BSD make doesn't support
+.SUFFIXES:
+.SUFFIXES: .c .o
+
+.c.o:
+	$(CC) $(CFLAGS) -c $<
 
 clean :
 	$(RM) *.i *.o *.so $(EXE)
