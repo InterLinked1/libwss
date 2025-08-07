@@ -614,16 +614,16 @@ int wss_close(struct wss_client *client, int code)
 
 	/* log if the close code is not valid per RFC 6455 §7.4.1 */
 	switch (code) {
-		case WS_CLOSE_NORMAL:            // 1000 - normal closure
-		case WS_CLOSE_GOING_AWAY:        // 1001 - going away
-		case WS_CLOSE_PROTOCOL_ERROR:    // 1002 - protocol error
-		case WS_CLOSE_UNACCEPTABLE_TYPE: // 1003 - unsupported data
-		case WS_CLOSE_DATA_INCONSISTENT: // 1007 - invalid data
-		case WS_CLOSE_POLICY_VIOLATION:  // 1008 - policy violation
-		case WS_CLOSE_LARGE_PAYLOAD:     // 1009 - message too big
-		case WS_CLOSE_EXTENSIONS:        // 1010 - required extension missing
-		case WS_CLOSE_UNEXPECTED:        // 1011 - internal server error
-			break; // valid
+		case WS_CLOSE_NORMAL:            /* 1000 - normal closure */
+		case WS_CLOSE_GOING_AWAY:        /* 1001 - going away */
+		case WS_CLOSE_PROTOCOL_ERROR:    /* 1002 - protocol error */
+		case WS_CLOSE_UNACCEPTABLE_TYPE: /* 1003 - unsupported data */
+		case WS_CLOSE_DATA_INCONSISTENT: /* 1007 - invalid data */
+		case WS_CLOSE_POLICY_VIOLATION:  /* 1008 - policy violation */
+		case WS_CLOSE_LARGE_PAYLOAD:     /* 1009 - message too big */
+		case WS_CLOSE_EXTENSIONS:        /* 1010 - required extension missing */
+		case WS_CLOSE_UNEXPECTED:        /* 1011 - internal server error */
+			break;
 		default:
 			wss_log(WS_LOG_ERROR, "Invalid WebSocket close status code: %d\n", code);
 			return -1;
