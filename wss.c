@@ -39,6 +39,11 @@
 #define be16toh(x) betoh16(x)
 #define be32toh(x) betoh32(x)
 #define be64toh(x) betoh64(x)
+#elif defined(__APPLE__)
+#include <libkern/OSByteOrder.h>
+#define be16toh(x) OSSwapBigToHostInt16(x)
+#define be32toh(x) OSSwapBigToHostInt32(x)
+#define be64toh(x) OSSwapBigToHostInt64(x)
 #endif
 
 #include "wss.h"
