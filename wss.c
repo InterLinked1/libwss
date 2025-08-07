@@ -612,7 +612,7 @@ int wss_close(struct wss_client *client, int code)
     char buf[2];
     unsigned short int *status;
 
-    // log if the close code is not valid per RFC 6455 §7.4.1
+    /* log if the close code is not valid per RFC 6455 §7.4.1 */
     switch (code) {
         case WS_CLOSE_NORMAL:            // 1000 - normal closure
         case WS_CLOSE_GOING_AWAY:        // 1001 - going away
