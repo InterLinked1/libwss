@@ -5,7 +5,12 @@
 #
 
 CC		= gcc
-CFLAGS = -Wall -Werror -Wunused -Wextra -Wmaybe-uninitialized -Wstrict-prototypes -Wmissing-prototypes -Wdeclaration-after-statement -Wmissing-declarations -Wmissing-format-attribute -Wnull-dereference -Wformat=2 -Wshadow -Wsizeof-pointer-memaccess -std=gnu99 -pthread -O3 -g -Wstack-protector -fno-omit-frame-pointer -fwrapv -fPIC -D_FORTIFY_SOURCE=2
+
+# Detect macOS and conditionally exclude GCC-specific flags
+# Use shell-based conditional for better portability across make variants
+CFLAGS_COMMON = -Wall -Werror -Wunused -Wextra -Wstrict-prototypes -Wmissing-prototypes -Wdeclaration-after-statement -Wmissing-declarations -Wmissing-format-attribute -Wnull-dereference -Wformat=2 -Wshadow -Wsizeof-pointer-memaccess -std=gnu99 -pthread -O3 -g -Wstack-protector -fno-omit-frame-pointer -fwrapv -fPIC -D_FORTIFY_SOURCE=2
+CFLAGS_GCC_SPECIFIC = -Wmaybe-uninitialized
+CFLAGS = $(CFLAGS_COMMON) $(shell if [ "`uname -s`" != "Darwin" ]; then echo "$(CFLAGS_GCC_SPECIFIC)"; fi)
 EXE		= wss
 LIBNAME = libwss
 RM		= rm -f
